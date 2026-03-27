@@ -1,1 +1,1 @@
-echo "web: python app.py"
+printf "web: python app.py\n"
