@@ -1,0 +1,250 @@
+# 🃏 TUTORIAL LENGKAP: Texas Hold'em Poker — Telegram Mini App
+## Dari Nol Sampai Live (Windows/Mac/Linux)
+
+---
+
+## 📁 STRUKTUR FILE YANG KAMU PUNYA
+
+```
+poker_app/
+├── app.py              ← Server utama (Flask + SocketIO)
+├── requirements.txt    ← Library yang dibutuhkan
+├── Procfile            ← Perintah start untuk Railway
+├── railway.toml        ← Config Railway
+└── templates/
+    └── index.html      ← UI game (Texas Hold'em)
+```
+
+---
+
+## STEP 1 — INSTALL TOOLS DI KOMPUTER KAMU
+
+### A. Install Python
+1. Buka https://python.org/downloads
+2. Download Python 3.11+
+3. Install — **centang "Add Python to PATH"** ✅
+4. Verifikasi di CMD:
+   ```
+   python --version
+   ```
+   Harus muncul: `Python 3.11.x`
+
+### B. Install Git
+1. Buka https://git-scm.com/downloads
+2. Install dengan setting default
+3. Verifikasi:
+   ```
+   git --version
+   ```
+
+---
+
+## STEP 2 — SETUP PROJECT DI LOKAL
+
+Buka CMD (Windows) atau Terminal (Mac/Linux):
+
+```bash
+# Buat folder project
+mkdir poker_app
+cd poker_app
+
+# Salin semua file ke folder ini:
+# - app.py
+# - requirements.txt
+# - Procfile
+# - railway.toml
+# - templates/index.html  (buat folder templates dulu!)
+
+mkdir templates
+# Lalu taruh index.html di dalam folder templates/
+```
+
+### Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+### Test di lokal:
+```bash
+python app.py
+```
+
+Buka browser: http://localhost:5000
+
+Kalau muncul tampilan poker — ✅ BERHASIL!
+
+Tekan Ctrl+C untuk stop.
+
+---
+
+## STEP 3 — BUAT AKUN RAILWAY (GRATIS)
+
+1. Buka https://railway.app
+2. Klik **"Login"** → pilih **"Login with GitHub"**
+3. Kalau belum punya GitHub, buat dulu di https://github.com (gratis)
+4. Setelah login di Railway, kamu dapat $5 credit gratis per bulan
+
+---
+
+## STEP 4 — UPLOAD KE GITHUB
+
+Di CMD, dari dalam folder `poker_app`:
+
+```bash
+# Init git
+git init
+
+# Tambah semua file
+git add .
+
+# Commit pertama
+git commit -m "Initial poker app"
+```
+
+Buka https://github.com, klik **"New repository"**:
+- Name: `poker-app`
+- Visibility: Public
+- Klik **"Create repository"**
+
+Ikuti instruksi di halaman itu:
+```bash
+git remote add origin https://github.com/USERNAMEKAMU/poker-app.git
+git branch -M main
+git push -u origin main
+```
+
+---
+
+## STEP 5 — DEPLOY KE RAILWAY
+
+1. Login ke https://railway.app
+2. Klik **"New Project"**
+3. Pilih **"Deploy from GitHub repo"**
+4. Pilih repo `poker-app` yang baru kamu buat
+5. Railway otomatis detect Python → klik **"Deploy"**
+6. Tunggu 1-2 menit...
+
+### Set Environment Variable:
+Di Railway dashboard → project kamu → **Variables**:
+```
+SECRET_KEY = pokerku2024random
+```
+
+### Dapat URL:
+Setelah deploy selesai, klik **"Settings"** → **"Domains"**  
+Klik **"Generate Domain"** → kamu dapat URL seperti:
+```
+https://poker-app-production-xxxx.railway.app
+```
+
+**Salin URL ini!** ← kamu butuh ini untuk Telegram
+
+---
+
+## STEP 6 — SETUP TELEGRAM BOT
+
+### A. Buat Bot
+1. Buka Telegram, cari **@BotFather**
+2. Ketik `/newbot`
+3. Isi nama bot (misal: "Poker Texas")
+4. Isi username bot (misal: "pokertexas_bot") — harus diakhiri `_bot`
+5. Kamu dapat **TOKEN** — simpan!
+
+### B. Set Mini App Button
+Di chat dengan @BotFather:
+1. Ketik `/mybots`
+2. Pilih bot kamu
+3. Klik **"Bot Settings"**
+4. Klik **"Menu Button"**
+5. Klik **"Configure menu button"**
+6. Masukkan URL Railway kamu: `https://poker-app-production-xxxx.railway.app`
+7. Masukkan text tombol: `🃏 Main Poker`
+
+### C. Set Commands (opsional)
+Ketik ke @BotFather:
+```
+/setcommands
+```
+Pilih bot kamu, lalu kirim:
+```
+start - Mulai bot
+play - Buka meja poker
+```
+
+---
+
+## STEP 7 — TEST GAME
+
+1. Buka Telegram
+2. Cari bot kamu (misal: @pokertexas_bot)
+3. Klik **Start**
+4. Kamu lihat tombol menu di bawah — klik tombol poker
+5. Mini App terbuka!
+
+### Cara main multiplayer:
+- Minta teman join pakai link yang sama
+- Atau share link: `https://t.me/pokertexas_bot`
+- 2-4 orang join, lalu klik **Mulai Game**
+
+---
+
+## 🎮 CARA MAIN
+
+| Aksi | Keterangan |
+|------|------------|
+| FOLD | Buang kartu, keluar dari ronde |
+| CHECK | Lanjut tanpa bet (kalau tidak ada bet) |
+| CALL | Ikuti bet lawan |
+| RAISE | Naikkan taruhan (geser slider) |
+| ALL IN 🔥 | Taruh semua chips |
+
+### Alur game:
+1. Semua pemain dapat 2 kartu (hole cards)
+2. **Pre-flop**: Round bet pertama
+3. **Flop**: 3 kartu community dibuka, bet
+4. **Turn**: 1 kartu lagi, bet
+5. **River**: 1 kartu terakhir, bet
+6. **Showdown**: Kartu dibandingkan, yang terbaik menang!
+
+---
+
+## 🔧 TROUBLESHOOTING
+
+### "Module not found" saat `pip install`:
+```bash
+pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### Railway deploy gagal:
+- Pastikan `Procfile` ada dan tidak ada spasi ekstra
+- Cek log di Railway dashboard → klik "View Logs"
+
+### Bot tidak buka Mini App:
+- Pastikan URL Railway benar (https://, bukan http://)
+- Railway harus deployed dan running (cek statusnya)
+
+### Game tidak realtime / lambat:
+- Ini normal saat pertama kali — Railway perlu "wake up"
+- Setelah aktif, biasanya < 100ms
+
+---
+
+## 🚀 FITUR YANG SUDAH ADA
+
+✅ Texas Hold'em lengkap (preflop → flop → turn → river → showdown)  
+✅ Turn system — hanya pemain yang gilirannya bisa aksi  
+✅ Fold, Check, Call, Raise (dengan slider), All-in  
+✅ Blind system (small blind 50, big blind 100)  
+✅ Hand evaluation (pair, two pair, straight, flush, dll)  
+✅ Chips persistent (disimpan di database)  
+✅ 2-4 pemain + spectator mode  
+✅ Real-time dengan Socket.IO  
+✅ UI kartu yang cantik  
+✅ Auto-detect username Telegram  
+
+---
+
+## 📞 KALAU MASIH BINGUNG
+
+Periksa log Railway untuk error, atau restart deployment dari dashboard Railway.
