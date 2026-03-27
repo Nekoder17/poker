@@ -1,8 +1,5 @@
-from gevent import monkey
-monkey.patch_all()
-
 from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_socketio import SocketIO, emit
 import sqlite3
 import random
 import os
@@ -68,12 +65,10 @@ def evaluate_5(cards):
     suits = [card_suit(c) for c in cards]
     flush = len(set(suits)) == 1
     straight = (ranks == list(range(ranks[0], ranks[0]-5, -1))) or (sorted(ranks) == [2,3,4,5,14])
-    
     from collections import Counter
     cnt = Counter(ranks)
     counts = sorted(cnt.values(), reverse=True)
     unique = sorted(cnt.keys(), key=lambda r: (cnt[r], r), reverse=True)
-
     if straight and flush:
         return (8, ranks)
     if counts[0] == 4:
@@ -94,24 +89,24 @@ def evaluate_5(cards):
 
 # ===== GAME STATE =====
 game = {
-    "players": [],       # [{name, chips, bet, folded, allin, sid}]
-    "spectators": [],    # [sid]
-    "hands": {},         # {name: [card1, card2]}
+    "players": [],
+    "spectators": [],
+    "hands": {},
     "community": [],
     "deck": [],
     "pot": 0,
-    "stage": "waiting",  # waiting, preflop, flop, turn, river, showdown
+    "stage": "waiting",
     "current_turn": 0,
     "current_bet": 0,
     "dealer": 0,
     "small_blind": 50,
     "big_blind": 100,
-    "round_bets": {},    # {name: total bet this round}
-    "acted": set(),      # players who acted this round
+    "round_bets": {},
+    "acted": set(),
     "last_raiser": None,
 }
 
-def broadcast_state(include_hands=False):
+def broadcast_state():
     state = {
         "players": [
             {
@@ -130,33 +125,23 @@ def broadcast_state(include_hands=False):
         "current_bet": game["current_bet"],
         "spectator_count": len(game["spectators"]),
     }
-    if include_hands:
-        state["hands"] = game["hands"]
-    
-    # Send each player their own hand privately
     for p in game["players"]:
         if p["sid"] and p["name"] in game["hands"]:
             personal_state = dict(state)
             personal_state["my_hand"] = game["hands"][p["name"]]
             personal_state["my_name"] = p["name"]
             socketio.emit("state", personal_state, room=p["sid"])
-    
-    # Send spectators (no hands)
     for sid in game["spectators"]:
         spec_state = dict(state)
         spec_state["my_hand"] = []
         spec_state["my_name"] = "spectator"
         socketio.emit("state", spec_state, room=sid)
 
-def active_players():
-    return [p for p in game["players"] if not p["folded"] and not p["allin"]]
-
 def next_turn():
     active = [i for i, p in enumerate(game["players"]) if not p["folded"] and not p["allin"]]
     if not active:
         end_round()
         return
-    
     idx = game["current_turn"]
     for _ in range(len(game["players"])):
         idx = (idx + 1) % len(game["players"])
@@ -165,21 +150,16 @@ def next_turn():
             game["current_turn"] = idx
             broadcast_state()
             return
-    
     end_round()
 
 def check_round_over():
     active = [p for p in game["players"] if not p["folded"] and not p["allin"]]
     not_folded = [p for p in game["players"] if not p["folded"]]
-    
     if len(not_folded) == 1:
         end_round()
         return True
-    
-    # Round over if all active players have acted and matched the bet
     all_matched = all(p["bet"] == game["current_bet"] or p["allin"] for p in active)
     all_acted = all(p["name"] in game["acted"] for p in active)
-    
     if all_matched and all_acted:
         advance_stage()
         return True
@@ -190,7 +170,6 @@ def advance_stage():
     game["current_bet"] = 0
     for p in game["players"]:
         p["bet"] = 0
-    
     if game["stage"] == "preflop":
         game["community"] = [game["deck"].pop(), game["deck"].pop(), game["deck"].pop()]
         game["stage"] = "flop"
@@ -203,104 +182,72 @@ def advance_stage():
     elif game["stage"] == "river":
         end_round()
         return
-    
-    # Reset turn to first active after dealer
     active_indices = [i for i, p in enumerate(game["players"]) if not p["folded"] and not p["allin"]]
     if active_indices:
-        # Start from player after dealer
         dealer = game["dealer"]
         for i in range(1, len(game["players"])+1):
             idx = (dealer + i) % len(game["players"])
             if idx in active_indices:
                 game["current_turn"] = idx
                 break
-    
     broadcast_state()
 
 def end_round():
     not_folded = [p for p in game["players"] if not p["folded"]]
-    
     if len(not_folded) == 1:
         winner = not_folded[0]
         winner["chips"] += game["pot"]
         set_chips(winner["name"], winner["chips"])
-        result = {
-            "winner": winner["name"],
-            "reason": "everyone folded",
-            "pot": game["pot"],
-            "hands": {}
-        }
+        result = {"winner": winner["name"], "reason": "everyone folded", "pot": game["pot"], "hands": {}}
     else:
         scores = {}
         for p in not_folded:
             hand = game["hands"].get(p["name"], [])
             scores[p["name"]] = best_hand(hand, game["community"])
-        
         winner_name = max(scores, key=lambda n: scores[n])
         winner = next(p for p in game["players"] if p["name"] == winner_name)
         winner["chips"] += game["pot"]
         set_chips(winner["name"], winner["chips"])
-        
         result = {
             "winner": winner_name,
             "reason": "best hand",
             "pot": game["pot"],
             "hands": {p["name"]: game["hands"].get(p["name"], []) for p in not_folded}
         }
-    
     game["stage"] = "showdown"
     game["pot"] = 0
-    
-    # Update all players chips from DB
     for p in game["players"]:
         p["chips"] = get_chips(p["name"])
         p["bet"] = 0
         p["folded"] = False
         p["allin"] = False
-    
     broadcast_state()
     socketio.emit("showdown", result)
 
-# ===== ROUTES =====
 @app.route("/")
 def index():
     return render_template("index.html")
 
-# ===== SOCKET EVENTS =====
 @socketio.on("join")
 def on_join(data):
     username = data.get("username", "").strip()
     if not username:
         return
-    
     sid = request.sid
-    
-    # Check if already a player
     existing = next((p for p in game["players"] if p["name"] == username), None)
     if existing:
         existing["sid"] = sid
         emit("joined", {"role": "player", "chips": existing["chips"]})
         broadcast_state()
         return
-    
-    # Join as player if slot available and game waiting
     if game["stage"] == "waiting" and len(game["players"]) < 4:
         chips = get_chips(username)
-        game["players"].append({
-            "name": username,
-            "chips": chips,
-            "bet": 0,
-            "folded": False,
-            "allin": False,
-            "sid": sid
-        })
+        game["players"].append({"name": username, "chips": chips, "bet": 0, "folded": False, "allin": False, "sid": sid})
         emit("joined", {"role": "player", "chips": chips})
     else:
-        # Join as spectator
         if sid not in game["spectators"]:
             game["spectators"].append(sid)
         emit("joined", {"role": "spectator", "chips": 0})
-    
     broadcast_state()
 
 @socketio.on("start_game")
@@ -311,32 +258,24 @@ def on_start():
     if game["stage"] != "waiting":
         emit("error", {"msg": "Game sudah berjalan!"})
         return
-    
     game["deck"] = create_deck()
     game["community"] = []
     game["pot"] = 0
     game["stage"] = "preflop"
     game["acted"] = set()
     game["current_bet"] = game["big_blind"]
-    
-    # Reset players
     for p in game["players"]:
         p["folded"] = False
         p["allin"] = False
         p["bet"] = 0
-    
-    # Deal hands
     game["hands"] = {}
     for p in game["players"]:
         game["hands"][p["name"]] = [game["deck"].pop(), game["deck"].pop()]
-    
     n = len(game["players"])
     dealer = game["dealer"] % n
     sb = (dealer + 1) % n
     bb = (dealer + 2) % n
     utg = (dealer + 3) % n if n > 2 else (dealer + 1) % n
-    
-    # Post blinds
     def post_blind(idx, amount):
         p = game["players"][idx]
         actual = min(amount, p["chips"])
@@ -346,13 +285,10 @@ def on_start():
         if p["chips"] == 0:
             p["allin"] = True
         set_chips(p["name"], p["chips"])
-    
     post_blind(sb, game["small_blind"])
     post_blind(bb, game["big_blind"])
-    
     game["current_turn"] = utg % n
     game["last_raiser"] = bb
-    
     broadcast_state()
 
 @socketio.on("action")
@@ -360,29 +296,23 @@ def on_action(data):
     sid = request.sid
     action = data.get("action")
     amount = int(data.get("amount", 0))
-    
     player = next((p for p in game["players"] if p["sid"] == sid), None)
     if not player:
         return
-    
     idx = game["players"].index(player)
     if idx != game["current_turn"]:
         emit("error", {"msg": "Bukan giliran kamu!"})
         return
-    
     if game["stage"] in ["waiting", "showdown"]:
         return
-    
     if action == "fold":
         player["folded"] = True
         game["acted"].add(player["name"])
-    
     elif action == "check":
         if game["current_bet"] > player["bet"]:
             emit("error", {"msg": "Tidak bisa check, ada bet!"})
             return
         game["acted"].add(player["name"])
-    
     elif action == "call":
         to_call = game["current_bet"] - player["bet"]
         actual = min(to_call, player["chips"])
@@ -393,7 +323,6 @@ def on_action(data):
             player["allin"] = True
         set_chips(player["name"], player["chips"])
         game["acted"].add(player["name"])
-    
     elif action == "raise":
         total_bet = game["current_bet"] + max(amount, game["big_blind"])
         to_add = total_bet - player["bet"]
@@ -407,7 +336,6 @@ def on_action(data):
         set_chips(player["name"], player["chips"])
         game["acted"] = {player["name"]}
         game["last_raiser"] = idx
-    
     elif action == "allin":
         actual = player["chips"]
         player["bet"] += actual
@@ -420,7 +348,6 @@ def on_action(data):
         else:
             game["acted"].add(player["name"])
         set_chips(player["name"], 0)
-    
     if not check_round_over():
         next_turn()
 
@@ -428,15 +355,11 @@ def on_action(data):
 def on_new_round():
     if game["stage"] != "showdown":
         return
-    
-    # Remove broke players
     game["players"] = [p for p in game["players"] if p["chips"] > 0]
-    
     if len(game["players"]) < 2:
         game["stage"] = "waiting"
         broadcast_state()
         return
-    
     game["dealer"] = (game["dealer"] + 1) % len(game["players"])
     game["stage"] = "waiting"
     broadcast_state()

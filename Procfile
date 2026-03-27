@@ -1,1 +1,1 @@
-printf "web: python app.py\n"
+web: python app.py
