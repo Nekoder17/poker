@@ -1,6 +1,2 @@
-[build]
-builder = "NIXPACKS"
-
-[deploy]
-startCommand = "gunicorn --worker-class eventlet -w 1 app:app"
-restartPolicyType = "ON_FAILURE"
+[start]
+cmd = "python app.py"
